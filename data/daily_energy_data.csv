@@ -1,0 +1,52 @@
+Date,Segment,Group,Person,Topic,Food,Duration,Sentiment,Tone,Energy
+2025-05-01,Morning,"['Friend A', 'Self']",Friend A,Health,Burger,32,0.56,Neutral,1.28
+2025-05-01,Morning,"['Friend A', 'Self']",Self,Chores,Burger,33,0.56,Neutral,1.28
+2025-05-01,Afternoon,"['Mom', 'Friend A']",Mom,Food,Salad,30,-0.89,Neutral,0.56
+2025-05-01,Afternoon,"['Mom', 'Friend A']",Friend A,Work,Tea,31,-0.89,Neutral,0.56
+2025-05-01,Evening,"['Friend A', 'Colleague']",Friend A,Chat,Tea,25,0.22,Uplifting,1.61
+2025-05-01,Evening,"['Friend A', 'Colleague']",Colleague,Food,Burger,53,0.22,Uplifting,1.61
+2025-05-02,Morning,"['Friend A', 'Colleague']",Friend A,Work,Salad,13,0.72,Neutral,1.36
+2025-05-02,Morning,"['Friend A', 'Colleague']",Colleague,Work,Tea,23,0.72,Neutral,1.36
+2025-05-02,Afternoon,"['Colleague', 'Partner', 'Self']",Colleague,Chat,Tea,17,-0.54,Uplifting,1.23
+2025-05-02,Afternoon,"['Colleague', 'Partner', 'Self']",Partner,Chores,Coffee,45,-0.54,Uplifting,1.23
+2025-05-02,Afternoon,"['Colleague', 'Partner', 'Self']",Self,Health,Tea,11,-0.54,Uplifting,1.23
+2025-05-02,Evening,"['Colleague', 'Mom', 'Self']",Colleague,Health,Salad,45,0.94,Neutral,1.47
+2025-05-02,Evening,"['Colleague', 'Mom', 'Self']",Mom,Food,Tea,49,0.94,Neutral,1.47
+2025-05-02,Evening,"['Colleague', 'Mom', 'Self']",Self,Exercise,None,27,0.94,Neutral,1.47
+2025-05-03,Morning,"['Colleague', 'Mom']",Colleague,Work,None,24,-0.44,Neutral,0.78
+2025-05-03,Morning,"['Colleague', 'Mom']",Mom,Exercise,Coffee,34,-0.44,Neutral,0.78
+2025-05-03,Afternoon,"['Colleague', 'Friend A']",Colleague,Chores,Coffee,17,-0.41,Uplifting,1.29
+2025-05-03,Afternoon,"['Colleague', 'Friend A']",Friend A,Chores,Burger,42,-0.41,Uplifting,1.29
+2025-05-03,Evening,"['Mom', 'Partner']",Mom,Chat,Salad,42,-0.77,Down,0.12
+2025-05-03,Evening,"['Mom', 'Partner']",Partner,Food,None,44,-0.77,Down,0.12
+2025-05-04,Morning,"['Friend A', 'Partner', 'Mom']",Friend A,Work,None,35,-0.76,Neutral,0.62
+2025-05-04,Morning,"['Friend A', 'Partner', 'Mom']",Partner,Food,Burger,18,-0.76,Neutral,0.62
+2025-05-04,Morning,"['Friend A', 'Partner', 'Mom']",Mom,Health,Salad,22,-0.76,Neutral,0.62
+2025-05-04,Afternoon,"['Colleague', 'Friend A']",Colleague,Exercise,Burger,38,0.39,Uplifting,1.7
+2025-05-04,Afternoon,"['Colleague', 'Friend A']",Friend A,Chat,None,41,0.39,Uplifting,1.7
+2025-05-04,Evening,"['Mom', 'Partner']",Mom,Work,None,15,0.86,Down,0.93
+2025-05-04,Evening,"['Mom', 'Partner']",Partner,Chat,Tea,53,0.86,Down,0.93
+2025-05-05,Morning,"['Colleague', 'Mom', 'Self']",Colleague,Work,Coffee,10,-0.35,Uplifting,1.32
+2025-05-05,Morning,"['Colleague', 'Mom', 'Self']",Mom,Work,Burger,22,-0.35,Uplifting,1.32
+2025-05-05,Morning,"['Colleague', 'Mom', 'Self']",Self,Work,Burger,48,-0.35,Uplifting,1.32
+2025-05-05,Afternoon,"['Self', 'Partner', 'Friend A']",Self,Chores,Coffee,58,0.38,Uplifting,1.69
+2025-05-05,Afternoon,"['Self', 'Partner', 'Friend A']",Partner,Food,Coffee,21,0.38,Uplifting,1.69
+2025-05-05,Afternoon,"['Self', 'Partner', 'Friend A']",Friend A,Food,Salad,12,0.38,Uplifting,1.69
+2025-05-05,Evening,"['Friend A', 'Colleague']",Friend A,Food,None,41,0.22,Neutral,1.11
+2025-05-05,Evening,"['Friend A', 'Colleague']",Colleague,Work,Coffee,28,0.22,Neutral,1.11
+2025-05-06,Morning,"['Partner', 'Colleague', 'Self']",Partner,Chores,Burger,26,0.11,Neutral,1.05
+2025-05-06,Morning,"['Partner', 'Colleague', 'Self']",Colleague,Food,None,43,0.11,Neutral,1.05
+2025-05-06,Morning,"['Partner', 'Colleague', 'Self']",Self,Food,Burger,57,0.11,Neutral,1.05
+2025-05-06,Afternoon,"['Partner', 'Friend A', 'Colleague']",Partner,Chat,Burger,45,0.39,Down,0.7
+2025-05-06,Afternoon,"['Partner', 'Friend A', 'Colleague']",Friend A,Chores,Salad,12,0.39,Down,0.7
+2025-05-06,Afternoon,"['Partner', 'Friend A', 'Colleague']",Colleague,Chores,Tea,41,0.39,Down,0.7
+2025-05-06,Evening,"['Colleague', 'Friend A']",Colleague,Work,Burger,37,-0.23,Down,0.39
+2025-05-06,Evening,"['Colleague', 'Friend A']",Friend A,Work,Coffee,59,-0.23,Down,0.39
+2025-05-07,Morning,"['Mom', 'Self']",Mom,Chat,Tea,58,-0.65,Down,0.17
+2025-05-07,Morning,"['Mom', 'Self']",Self,Health,Coffee,57,-0.65,Down,0.17
+2025-05-07,Afternoon,"['Colleague', 'Friend A', 'Self']",Colleague,Chores,Burger,57,0.27,Uplifting,1.63
+2025-05-07,Afternoon,"['Colleague', 'Friend A', 'Self']",Friend A,Chores,Tea,33,0.27,Uplifting,1.63
+2025-05-07,Afternoon,"['Colleague', 'Friend A', 'Self']",Self,Food,Coffee,33,0.27,Uplifting,1.63
+2025-05-07,Evening,"['Partner', 'Self', 'Friend A']",Partner,Food,Coffee,44,0.21,Uplifting,1.61
+2025-05-07,Evening,"['Partner', 'Self', 'Friend A']",Self,Work,None,27,0.21,Uplifting,1.61
+2025-05-07,Evening,"['Partner', 'Self', 'Friend A']",Friend A,Food,Salad,11,0.21,Uplifting,1.61

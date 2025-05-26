@@ -1,125 +1,18 @@
 #!/usr/bin/env python3
 """
-Run analysis on daily recordings and display results.
-This script first uses Anthropic to analyze raw daily inputs, saves the structured responses,
-then parses those responses into final JSON data.
+Run analysis on daily recordings and generate structured JSON data.
+This script parses the raw responses from the debug directory and generates daily analysis JSON files.
 """
 
 import os
-import sys
 from pathlib import Path
 from datetime import datetime
-from typing import List, Dict, Optional, Tuple, Any
+from typing import List, Dict, Optional, Any
 import json
 from pydantic import BaseModel, Field, field_validator
 import re
-from dotenv import load_dotenv
-from anthropic_analyzer import AnthropicAnalyzer
-
-# Load environment variables and initialize Anthropic analyzer
-load_dotenv()
-anthropic_analyzer = None
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-if ANTHROPIC_API_KEY:
-    try:
-        anthropic_analyzer = AnthropicAnalyzer()
-        print("Successfully initialized Anthropic analyzer")
-    except Exception as e:
-        print(f"Failed to initialize Anthropic analyzer: {e}")
-else:
-    print("No Anthropic API key found in environment variables")
-
-# The detailed prompt that instructs the Anthropic model how to analyze the text
-ANTHROPIC_INSTRUCTIONAL_PROMPT = """You are Nirva, an AI journaling and life coach assistant. Your purpose is to help the user ("Wei") remember and reflect on their day with warmth, clarity, and emotional depth. You will analyze a transcript of Wei's day to provide insights and summaries.
-
-Today's Date: {date}
-Input Transcript:
-{text}
-
-Your Task:
-Step 1: Transcript Segmentation and Context Identification
-Carefully read the provided transcript. Divide it into distinct, meaningful events or episodes...
-
-Step 2: Structured Event Analysis (JSON Output)
-For each individual event identified in Step 1, generate a structured analysis in JSON format...
-
-Step 3: Daily Summaries and Visualization Data
-Based on the JSON data generated in Step 2, provide the data and descriptions for charts and summaries..."""
-
-def extract_date_from_raw_filename(filename: str) -> Optional[datetime]:
-    """Extract date from filename format MM-DD_whatever.txt."""
-    date_match = re.match(r"(\d{2})-(\d{2})_", filename)
-    if date_match:
-        month, day = date_match.groups()
-        # Assuming current year for the analysis
-        current_year = datetime.now().year
-        return datetime(current_year, int(month), int(day))
-    return None
-
-def generate_raw_response(input_file: Path, date: datetime) -> Optional[str]:
-    """Generate a structured response using Anthropic for a single input file."""
-    if not anthropic_analyzer:
-        print(f"Skipping Anthropic analysis for {input_file} - no analyzer available")
-        return None
-        
-    try:
-        # Read the input file
-        with open(input_file, 'r', encoding='utf-8') as f:
-            content = f.read()
-            
-        # Format the prompt with the date and content
-        formatted_prompt = ANTHROPIC_INSTRUCTIONAL_PROMPT.format(
-            date=date.strftime("%m.%d.%Y"),
-            text=content
-        )
-        
-        # Get the structured analysis from Anthropic
-        response = anthropic_analyzer.analyze_text(content, formatted_prompt)
-        
-        # Format the complete response file content
-        full_response = f"=== PROMPT ===\n{formatted_prompt}\n\n=== RESPONSE ===\n{response}"
-        
-        return full_response
-    except Exception as e:
-        print(f"Error generating Anthropic analysis for {input_file}: {e}")
-        return None
-
-def process_raw_data_files(raw_data_dir: Path, debug_dir: Path) -> None:
-    """Process all raw data files using Anthropic and save structured responses."""
-    if not raw_data_dir.exists():
-        print(f"Raw data directory {raw_data_dir} does not exist")
-        return
-        
-    # Create debug directory if it doesn't exist
-    debug_dir.mkdir(exist_ok=True)
-    
-    # Find all text files in raw_data directory
-    raw_files = list(raw_data_dir.glob("*.txt"))
-    print(f"Found {len(raw_files)} raw input file(s) to process")
-    
-    for raw_file in raw_files:
-        print(f"Processing raw input file: {raw_file}")
-        
-        # Extract date from filename
-        date = extract_date_from_raw_filename(raw_file.name)
-        if not date:
-            print(f"Could not extract date from filename: {raw_file.name}. Skipping.")
-            continue
-            
-        # Generate structured response using Anthropic
-        response_text = generate_raw_response(raw_file, date)
-        if not response_text:
-            print(f"Failed to generate structured response for {raw_file}. Skipping.")
-            continue
-            
-        # Save the response to a file in the debug directory
-        output_file = debug_dir / f"raw_response_{date.strftime('%Y-%m-%d')}.txt"
-        try:
-            with open(output_file, 'w', encoding='utf-8') as f:
-                f.write(response_text)
-            print(f"Saved structured response to {output_file}")
-        except Exception as e:
-            print(f"Error saving response to {output_file}: {e}")
+import uuid
+from collections import defaultdict
 
 class MoodEntry(BaseModel):
     """Model for a single mood entry."""
@@ -167,8 +60,8 @@ class TopicDetail(BaseModel):
     rank: Optional[int] = None
     topic_name: str
     num_events: Optional[int] = None
-    total_duration_minutes: Optional[int] = None # Changed to int for consistency
-    raw_description: str # To store the full string like "(3 events, 135 minutes)"
+    total_duration_minutes: Optional[int] = None
+    raw_description: str
 
 class RawResponse(BaseModel):
     """Model for parsing the raw response file."""
@@ -183,7 +76,6 @@ class RawResponse(BaseModel):
     @field_validator('energy_timeline')
     @classmethod
     def validate_timeline(cls, v: List[List[str]]) -> List[List[str]]:
-        # Ensure each entry has exactly 2 elements
         if not all(len(entry) == 2 for entry in v):
             raise ValueError('Each timeline entry must have exactly 2 elements')
         return v
@@ -213,57 +105,39 @@ def calculate_weighted_average(events, field_name):
 
 def find_json_array(text: str) -> str:
     """Find and extract the first complete JSON array from text."""
-    start_match = re.search(r'\s*[\[\]]', text) # Find first [ or ] to better locate start
+    start_match = re.search(r'\s*[\[\]]', text)
     if not start_match or text[start_match.start()] != '[':
-        # print("Debug: No JSON array start found or first bracket is not opening.")
         return ""
     
     start = start_match.start()
     count = 0
-    # Check if the text slice starting from 'start' is indeed a JSON array
-    # by looking for matching brackets
     for i in range(start, len(text)):
         if text[i] == '[':
             count += 1
         elif text[i] == ']':
             count -= 1
-        if count == 0 and i > start: # Found the end of the first complete array
-            # print(f"Debug: JSON array found from index {start} to {i+1}")
+        if count == 0 and i > start:
             return text[start : i + 1]
-    # print("Debug: JSON array brackets did not balance.")
-    return "" # Return empty if no complete array is found
+    return ""
 
 def parse_energy_timeline_from_string(timeline_string: str) -> List[List[str]]:
     """Parses a timeline string like '[[12:00, 7], [12:30, 6]]' into List[List[str]]."""
-    # print(f"Debug parse_energy_timeline: Input string: '{timeline_string}'") # Debugging
     parsed_timeline = []
     if not timeline_string.startswith('[[') or not timeline_string.endswith(']]'):
-        # print("Debug parse_energy_timeline: String does not start/end with [[]]") # Debugging
         return parsed_timeline
 
     content = timeline_string[2:-2]
-    # print(f"Debug parse_energy_timeline: Content after stripping outer brackets: '{content}'") # Debugging
-    
-    # Split by '],[' optionally surrounded by whitespace - more robust
     pairs = re.split(r"\s*\],\s*\[\s*", content)
-    # print(f"Debug parse_energy_timeline: Pairs after split: {pairs}") # Debugging
     
-    for i, pair_str in enumerate(pairs):
-        # print(f"Debug parse_energy_timeline: Processing pair {i}: '{pair_str}'") # Debugging
+    for pair_str in pairs:
         try:
-            # Split only on the first comma, strip whitespace from elements
-            elements = [elem.strip() for elem in pair_str.split(',', 1)] 
-            # print(f"Debug parse_energy_timeline: Elements after split: {elements}") # Debugging
+            elements = [elem.strip() for elem in pair_str.split(',', 1)]
             if len(elements) == 2:
-                time = elements[0].replace("'", "").replace('"', '') # Remove potential quotes from time
-                value = elements[1] # Value is already stripped
+                time = elements[0].replace("'", "").replace('"', '')
+                value = elements[1]
                 parsed_timeline.append([time, value])
-            # else:
-                # print(f"Debug parse_energy_timeline: Pair '{pair_str}' did not have 2 elements after split.")
-        except Exception as e:
-            # print(f"Debug parse_energy_timeline: Error parsing pair '{pair_str}': {e}")
+        except Exception:
             continue
-    # print(f"Debug parse_energy_timeline: Parsed timeline: {parsed_timeline}") # Debugging
     return parsed_timeline
 
 def extract_section(text: str, start_marker: str, end_marker: str) -> str:
@@ -275,36 +149,13 @@ def extract_section(text: str, start_marker: str, end_marker: str) -> str:
     except ValueError:
         return ""
 
-def clean_json_text(text: str) -> str:
-    """Clean up JSON text to make it valid."""
-    # Remove any trailing commas before closing brackets/braces
-    text = text.replace(',]', ']').replace(',}', '}')
-    
-    # Fix spacing around commas and colons
-    text = text.replace('",', '", ').replace('":"', '": "')
-    
-    # Fix spacing before arrays and objects
-    text = text.replace('":[', '": [').replace('":{', '": {')
-    
-    # Normalize whitespace
-    text = ' '.join(text.split())
-    
-    # Fix unescaped quotes
-    text = text.replace('\\"', '"')
-    text = text.replace('"[', '[').replace(']"', ']')
-    
-    return text
-
 def extract_score(section, label):
     """Extract a score value from text."""
-    # Try exact match first
     match = re.search(rf"{label}\s*(\d+\.?\d*)", section)
     if not match:
-        # Try without the colon
         label_without_colon = label.rstrip(':')
         match = re.search(rf"{label_without_colon}\s*(\d+\.?\d*)", section)
     if not match:
-        # Try just the number after the label
         label_base = label.replace('Daily ', '').replace(' Score:', '').replace(' Level Score:', '')
         match = re.search(rf"{label_base}[^\d]*(\d+\.?\d*)", section)
     if match:
@@ -326,312 +177,389 @@ def safe_float(value, default=None) -> Optional[float]:
         return default
 
 def parse_social_interactions(text_section: str) -> List[SocialInteractionDetail]:
+    """Parse social interactions section into structured data."""
     interactions = []
-    current_interaction_data = {}
-    person_regex = r"^([A-Za-z\\u4e00-\\u9fff\\s()]+?):\\s*$"
-    detail_regex = r"^\\s*-\\s*([^:]+):\\s*(.+)$"
-
+    current_interaction = {}
+    
     for line in text_section.split('\n'):
         line = line.strip()
         if not line:
+            if current_interaction:
+                try:
+                    interactions.append(SocialInteractionDetail(**current_interaction))
+                except Exception as e:
+                    print(f"Warning: Could not create SocialInteractionDetail: {e}")
+                current_interaction = {}
             continue
-        
-        person_match = re.match(person_regex, line)
-        if person_match:
-            if current_interaction_data and 'person_name' in current_interaction_data:
-                interactions.append(SocialInteractionDetail(**current_interaction_data))
             
-            matched_person_name = person_match.group(1).strip()
-            current_interaction_data = {"person_name": matched_person_name}
-        else:
-            detail_match = re.match(detail_regex, line)
-            if detail_match:
-                if 'person_name' in current_interaction_data:
-                    key = detail_match.group(1).strip().lower().replace(' ', '_')
-                    value = detail_match.group(2).strip()
-                    
-                    if key == "total_interaction_time":
-                        current_interaction_data['total_interaction_time'] = value
-                    elif key == "overall_inferred_impact":
-                        current_interaction_data['overall_inferred_impact'] = value
-                    elif key == "key_observation":
-                        current_interaction_data['key_observation'] = value
-                        
-    if current_interaction_data and 'person_name' in current_interaction_data:
-        interactions.append(SocialInteractionDetail(**current_interaction_data))
+        if line.endswith(':'):  # New person
+            if current_interaction:
+                try:
+                    interactions.append(SocialInteractionDetail(**current_interaction))
+                except Exception as e:
+                    print(f"Warning: Could not create SocialInteractionDetail: {e}")
+            current_interaction = {"person_name": line[:-1].strip()}
+        elif line.startswith('-') and ':' in line:
+            if not current_interaction:
+                continue
+            key, value = line[1:].split(':', 1)
+            key = key.strip().lower().replace(' ', '_')
+            value = value.strip()
             
+            if key == 'total_interaction_time':
+                current_interaction['total_interaction_time'] = value
+            elif key == 'overall_inferred_impact':
+                current_interaction['overall_inferred_impact'] = value
+            elif key == 'key_observation':
+                current_interaction['key_observation'] = value
+    
+    if current_interaction:
+        try:
+            interactions.append(SocialInteractionDetail(**current_interaction))
+        except Exception as e:
+            print(f"Warning: Could not create final SocialInteractionDetail: {e}")
+    
     return interactions
 
 def parse_topic_analysis(text_section: str) -> List[TopicDetail]:
+    """Parse topic analysis section into structured data."""
     topics = []
-    topic_regex = r"^(?:(\d+)\.\s*)?([^(:]+)(?:\s*\(([^)]+)\))?"
-    lines = text_section.split('\n')
-    for line in lines:
+    for line in text_section.split('\n'):
         line = line.strip()
-        if not line or line.lower().startswith("description:") or line.lower().startswith("data:"):
+        if not line or line.lower().startswith(('description:', 'data:')):
             continue
-        match = re.match(topic_regex, line)
+            
+        match = re.match(r'^(?:(\d+)\.\s*)?([^(]+)(?:\s*\(([^)]+)\))?', line)
         if match:
-            rank_str, topic_name_str, details_in_parens_str = match.groups()
-            topic_name = topic_name_str.strip()
-            rank = safe_int(rank_str)
-            num_events = None
-            total_duration_minutes = None
-            raw_description = details_in_parens_str.strip() if details_in_parens_str else ""
-            if details_in_parens_str:
-                details = details_in_parens_str.lower()
-                events_match = re.search(r'(\d+)\s*event', details)
-                duration_match = re.search(r'(\d+)\s*minute', details)
+            rank_str, topic_name, details = match.groups()
+            
+            topic_data = {
+                'rank': safe_int(rank_str),
+                'topic_name': topic_name.strip(),
+                'raw_description': details.strip() if details else "",
+                'num_events': None,
+                'total_duration_minutes': None
+            }
+            
+            if details:
+                events_match = re.search(r'(\d+)\s*event', details.lower())
+                duration_match = re.search(r'(\d+)\s*minute', details.lower())
+                
                 if events_match:
-                    num_events = safe_int(events_match.group(1))
+                    topic_data['num_events'] = safe_int(events_match.group(1))
                 if duration_match:
-                    total_duration_minutes = safe_int(duration_match.group(1))
-            topics.append(TopicDetail(
-                rank=rank, topic_name=topic_name, num_events=num_events,
-                total_duration_minutes=total_duration_minutes, raw_description=raw_description
-            ))
+                    topic_data['total_duration_minutes'] = safe_int(duration_match.group(1))
+            
+            try:
+                topics.append(TopicDetail(**topic_data))
+            except Exception as e:
+                print(f"Warning: Could not create TopicDetail: {e}")
+                
     return topics
 
-def parse_raw_response(file_path):
-    with open(file_path, 'r', encoding='utf-8') as f:
-        raw_text_full = f.read()
-    response_marker = "=== RESPONSE ==="
-    response_start_index = raw_text_full.find(response_marker)
-    raw_text = raw_text_full[response_start_index + len(response_marker):] if response_start_index != -1 else raw_text_full
-    if response_start_index == -1:
-        print(f"Warning: Response marker '{response_marker}' not found in {file_path}.")
-
-    events_section_text = extract_section(raw_text, "Step 2: Structured Event Analysis (JSON Output)", "Step 3: Daily Summaries and Visualization Data")
-    if not events_section_text:
-        raise ValueError("Could not find 'Step 2: Structured Event Analysis (JSON Output)' section.")
-    
-    events_json_str = find_json_array(events_section_text)
-    parsed_events_as_dicts = []
-    if events_json_str:
-        try:
-            events_list_from_json = json.loads(events_json_str)
-            if isinstance(events_list_from_json, list):
-                for event_dict in events_list_from_json:
-                    if isinstance(event_dict, dict) and event_dict.get('event_id') != 'unique_event_identifier_001':
-                        duration = safe_int(event_dict.get('duration_minutes'))
-                        mood = safe_float(event_dict.get('mood_score'))
-                        stress = safe_float(event_dict.get('stress_level'))
-                        energy = safe_float(event_dict.get('energy_level'))
-                        if duration is None or mood is None or stress is None or energy is None:
-                            print(f"Warning: Skipping event {event_dict.get('event_id', 'NO_ID')} due to missing/invalid critical numeric data.")
-                            continue
-                        event_dict['duration_minutes'] = duration
-                        event_dict['mood_score'] = mood
-                        event_dict['stress_level'] = stress
-                        event_dict['energy_level'] = energy
-                        parsed_events_as_dicts.append(event_dict)
-            else:
-                print("Warning: Parsed events JSON is not a list.")
-        except json.JSONDecodeError as e:
-            print(f"Error parsing events JSON: {e}. Snippet: {events_json_str[:200]}...")
-    else:
-        print("Warning: No JSON array found in events section. Events section content snippet (first 200 chars):")
-        print(events_section_text[:200] + "...")
-
-    event_models_for_pydantic = []
-    for event_d in parsed_events_as_dicts:
-        try:
-            event_models_for_pydantic.append(Event(**event_d))
-        except Exception as p_err:
-            print(f"Warning: Pydantic validation error for event {event_d.get('event_id', 'NO_ID')}: {p_err}. Skipping event.")
-            continue
-
-    scores_section_text = extract_section(raw_text, "Overall Daily Scores:", "Energy Level Timeline (Line Graph Data):")
-    daily_mood_score = safe_float(extract_score(scores_section_text, "Daily Mood Score:"), default=5.0)
-    daily_stress_score = safe_float(extract_score(scores_section_text, "Daily Stress Level Score:"), default=5.0)
-    daily_energy_score = safe_float(extract_score(scores_section_text, "Daily Energy Level Score:"), default=5.0)
-
-    if parsed_events_as_dicts:
-        if daily_mood_score == 5.0 and extract_score(scores_section_text, "Daily Mood Score:") is None:
-             daily_mood_score = calculate_weighted_average(parsed_events_as_dicts, 'mood_score')
-        if daily_stress_score == 5.0 and extract_score(scores_section_text, "Daily Stress Level Score:") is None:
-             daily_stress_score = calculate_weighted_average(parsed_events_as_dicts, 'stress_level')
-        if daily_energy_score == 5.0 and extract_score(scores_section_text, "Daily Energy Level Score:") is None:
-             daily_energy_score = calculate_weighted_average(parsed_events_as_dicts, 'energy_level')
-
-    daily_mood_score = daily_mood_score if daily_mood_score is not None else 5.0
-    daily_stress_score = daily_stress_score if daily_stress_score is not None else 5.0
-    daily_energy_score = daily_energy_score if daily_energy_score is not None else 5.0
-
-    timeline_section_text = extract_section(raw_text, "Energy Level Timeline (Line Graph Data):", "Mood Distribution (Pie Chart Data):")
-    timeline_data = []
-    if timeline_section_text:
-        timeline_string_found = None
-        for line in timeline_section_text.split('\n'):
-            stripped_line = line.strip()
-            if stripped_line.startswith('[[') and stripped_line.endswith(']]'):
-                timeline_string_found = stripped_line
-                break
-        if timeline_string_found:
-            timeline_data = parse_energy_timeline_from_string(timeline_string_found)
-            if not timeline_data: print(f"Warning: parse_energy_timeline_from_string failed for: {timeline_string_found}")
-    if not timeline_data and parsed_events_as_dicts:
-        print("Info: Energy timeline data not found or failed to parse, generating from events.")
-        for event_d in parsed_events_as_dicts:
-            if 'time_range' in event_d and 'energy_level' in event_d:
-                try:
-                    start_time = str(event_d['time_range']).split('-')[0].strip()
-                    energy_val = safe_float(event_d['energy_level'])
-                    if energy_val is not None:
-                        timeline_data.append([start_time, str(energy_val)])
-                except Exception:
-                    continue
-
-    mood_section_text = extract_section(raw_text, "Mood Distribution (Pie Chart Data):", "Awake Time Allocation (Bar Chart Data):")
-    mood_distribution_map = {} if not mood_section_text else parse_distribution(mood_section_text)
-    awake_time_text = extract_section(raw_text, "Awake Time Allocation (Bar Chart Data):", "Social Interaction Summary:")
-    if not awake_time_text: 
-        awake_time_text = extract_section(raw_text, "Awake Time Allocation (Bar Chart Data):", "Topic Analysis (Ranked List):")
-    time_allocation_map = {} if not awake_time_text else parse_distribution(awake_time_text)
-    social_interaction_text = extract_section(raw_text, "Social Interaction Summary:", "Topic Analysis (Ranked List):")
-    if not social_interaction_text: 
-        social_start_marker = "Social Interaction Summary:"
-        social_start_idx = raw_text.find(social_start_marker)
-        if social_start_idx != -1:
-            next_major_section_starts = [raw_text.find("Topic Analysis", social_start_idx), raw_text.find("\n\n\n", social_start_idx)] 
-            next_major_section_starts = [idx for idx in next_major_section_starts if idx != -1]
-            end_idx = min(next_major_section_starts) if next_major_section_starts else len(raw_text)
-            social_interaction_text = raw_text[social_start_idx + len(social_start_marker) : end_idx].strip()
-        else:
-            social_interaction_text = ""
-    print("DEBUG MAIN: Text passed to parse_social_interactions:")
-    print("---")
-    print(social_interaction_text)
-    print("---")
-    social_interactions_list = parse_social_interactions(social_interaction_text)
-    topic_analysis_section_text = extract_section(raw_text, "Topic Analysis (Ranked List):", "\n\n\n") 
-    if not topic_analysis_section_text:
-        topic_analysis_start_marker = "Topic Analysis (Ranked List):"
-        start_idx = raw_text.find(topic_analysis_start_marker)
-        if start_idx != -1:
-            topic_analysis_section_text = raw_text[start_idx + len(topic_analysis_start_marker):].strip()
-        else:
-            topic_analysis_section_text = ""
-    else: 
-        header_to_remove = "Topic Analysis (Ranked List):"
-        if topic_analysis_section_text.startswith(header_to_remove):
-             topic_analysis_section_text = topic_analysis_section_text[len(header_to_remove):].strip()
-    topic_analysis_list = parse_topic_analysis(topic_analysis_section_text)
-
-    raw_response_payload = {
-        'events': event_models_for_pydantic,
-        'overall_scores': {
-            'daily_mood_score': daily_mood_score,
-            'daily_stress_level_score': daily_stress_score,
-            'daily_energy_level_score': daily_energy_score
-        },
-        'energy_timeline': timeline_data,
-        'mood_distribution': [MoodEntry(mood=k, minutes=v) for k, v in mood_distribution_map.items()],
-        'awake_time_allocation': [ActivityEntry(activity=k, minutes=v) for k, v in time_allocation_map.items()],
-        'social_interactions': social_interactions_list,
-        'topic_analysis': topic_analysis_list
-    }
-    try:
-        raw_response_model = RawResponse(**raw_response_payload)
-    except Exception as e:
-        print(f"Error creating RawResponse Pydantic model: {e}")
-        print(f"Payload details: Events count={len(raw_response_payload['events'])}, Timeline count={len(raw_response_payload['energy_timeline'])}, Social count={len(raw_response_payload['social_interactions'])}, Topic count={len(raw_response_payload['topic_analysis'])}")
-        print(f"Overall Scores in payload: {raw_response_payload['overall_scores']}")
-        if raw_response_payload['events'] and event_models_for_pydantic:
-             first_event_payload = next((e_dict for e_dict in parsed_events_as_dicts if e_dict['event_id'] == event_models_for_pydantic[0].event_id), None)
-             if first_event_payload:
-                print(f"First successfully parsed event (ID: {event_models_for_pydantic[0].event_id}) raw numeric fields before Pydantic: D={first_event_payload['duration_minutes']}, M={first_event_payload['mood_score']}, S={first_event_payload['stress_level']}, E={first_event_payload['energy_level']}")
-        raise
-    return DailyAnalysis(
-        events=raw_response_model.events,
-        energy_timeline=raw_response_model.energy_timeline,
-        overall_scores=OverallScores(**raw_response_model.overall_scores),
-        mood_distribution={entry.mood: entry.minutes for entry in raw_response_model.mood_distribution},
-        awake_time_allocation={entry.activity: entry.minutes for entry in raw_response_model.awake_time_allocation},
-        social_interactions=raw_response_model.social_interactions,
-        topic_analysis=raw_response_model.topic_analysis
-    )
-
-def parse_distribution(section):
+def parse_distribution(section: str) -> Dict[str, int]:
     """Parse a distribution section into a dictionary of label -> minutes."""
     result = {}
-    # Look for lines like "Label: X minutes"
     for line in section.split('\n'):
         line = line.strip()
         if not line or ':' not in line:
             continue
-        # Split on first colon
-        parts = line.split(':', 1)
-        if len(parts) != 2:
-            continue
-        label = parts[0].strip()
-        # Extract the number before "minutes"
-        match = re.search(r'(\d+)\s*minutes?', parts[1])
+            
+        label, value = line.split(':', 1)
+        label = label.strip()
+        
+        match = re.search(r'(\d+)\s*minutes?', value)
         if match:
             minutes = int(match.group(1))
             result[label] = minutes
+            
     return result
 
-def extract_date(text):
-    """Extract the date from the raw response."""
-    match = re.search(r"Today's Date:\s*(\d{2}\.\d{2}\.\d{4})", text)
-    if match:
-        return match.group(1)
-    return None
+def extract_json_sections(text: str) -> Dict[str, Any]:
+    """Extract and parse JSON sections from the raw response."""
+    result = {
+        'events': [],
+        'overall_scores': {
+            'daily_mood_score': 5.0,
+            'daily_stress_level_score': 5.0,
+            'daily_energy_level_score': 5.0
+        },
+        'energy_timeline': [["00:00", "5.0"], ["23:59", "5.0"]],
+        'mood_distribution': {'neutral': 1440},
+        'awake_time_allocation': {'unknown': 1440},
+        'social_interactions': [],
+        'topic_analysis': []
+    }
+    
+    try:
+        # Extract events JSON array (Step 2)
+        events_match = re.search(r'\[\s*\{.*?\}\s*\]', text, re.DOTALL)
+        if events_match:
+            events_text = events_match.group(0)
+            try:
+                events_data = json.loads(events_text)
+                # Ensure each event has required fields
+                for event in events_data:
+                    event.setdefault('event_id', str(uuid.uuid4()))
+                    event.setdefault('event_title', 'Untitled Event')
+                    event.setdefault('time_range', '00:00-23:59')
+                    event.setdefault('duration_minutes', 1440)
+                    event.setdefault('mood_labels', ['neutral'])
+                    event.setdefault('mood_score', 5.0)
+                    event.setdefault('stress_level', 5.0)
+                    event.setdefault('energy_level', 5.0)
+                    event.setdefault('activity_type', 'unknown')
+                    event.setdefault('people_involved', [])
+                    event.setdefault('interaction_dynamic', 'neutral')
+                    event.setdefault('inferred_impact_on_wei', 'neutral')
+                    event.setdefault('topic_labels', ['daily life'])
+                    event.setdefault('context_summary', '')
+                    event.setdefault('key_quote_or_moment', '')
+                result['events'] = events_data
+                
+                # Calculate overall scores from events if available
+                if events_data:
+                    result['overall_scores']['daily_mood_score'] = calculate_weighted_average(events_data, 'mood_score')
+                    result['overall_scores']['daily_stress_level_score'] = calculate_weighted_average(events_data, 'stress_level')
+                    result['overall_scores']['daily_energy_level_score'] = calculate_weighted_average(events_data, 'energy_level')
+                    
+                    # Generate energy timeline from events
+                    timeline = []
+                    for event in sorted(events_data, key=lambda x: x['time_range'].split('-')[0]):
+                        try:
+                            start_time = event['time_range'].split('-')[0].strip()
+                            timeline.append([start_time, str(event['energy_level'])])
+                        except:
+                            continue
+                    if timeline:
+                        result['energy_timeline'] = timeline
+                    
+                    # Calculate mood distribution
+                    mood_minutes = defaultdict(int)
+                    for event in events_data:
+                        primary_mood = event['mood_labels'][0] if event['mood_labels'] else 'neutral'
+                        mood_minutes[primary_mood] += event['duration_minutes']
+                    if mood_minutes:
+                        result['mood_distribution'] = dict(mood_minutes)
+                    
+                    # Calculate activity allocation
+                    activity_minutes = defaultdict(int)
+                    for event in events_data:
+                        activity_minutes[event['activity_type']] += event['duration_minutes']
+                    if activity_minutes:
+                        result['awake_time_allocation'] = dict(activity_minutes)
+                    
+                    # Extract social interactions
+                    interactions = defaultdict(lambda: {
+                        'person_name': '',
+                        'total_interaction_time': '0 minutes',
+                        'overall_inferred_impact': 'neutral',
+                        'key_observation': ''
+                    })
+                    
+                    for event in events_data:
+                        for person in event['people_involved']:
+                            if person != 'Self':
+                                interactions[person]['person_name'] = person
+                                current_minutes = int(interactions[person]['total_interaction_time'].split()[0])
+                                interactions[person]['total_interaction_time'] = f"{current_minutes + event['duration_minutes']} minutes"
+                                impact = event['inferred_impact_on_wei']
+                                if impact == 'energizing':
+                                    interactions[person]['overall_inferred_impact'] = 'energizing'
+                                elif impact == 'draining' and interactions[person]['overall_inferred_impact'] != 'energizing':
+                                    interactions[person]['overall_inferred_impact'] = 'draining'
+                                # Add key observation from the first event with this person
+                                if not interactions[person]['key_observation']:
+                                    interactions[person]['key_observation'] = event['context_summary']
+                    
+                    if interactions:
+                        result['social_interactions'] = list(interactions.values())
+                    
+                    # Extract topic analysis
+                    topics = defaultdict(lambda: {
+                        'topic_name': '',
+                        'num_events': 0,
+                        'total_duration_minutes': 0,
+                        'raw_description': ''
+                    })
+                    
+                    for event in events_data:
+                        for topic in event['topic_labels']:
+                            if topic != 'N/A':
+                                topics[topic]['topic_name'] = topic
+                                topics[topic]['num_events'] += 1
+                                topics[topic]['total_duration_minutes'] += event['duration_minutes']
+                    
+                    if topics:
+                        result['topic_analysis'] = list(topics.values())
+                
+            except json.JSONDecodeError:
+                print("Warning: Could not parse events JSON")
+                result['events'] = [{
+                    'event_id': str(uuid.uuid4()),
+                    'event_title': 'Daily Summary',
+                    'time_range': '00:00-23:59',
+                    'duration_minutes': 1440,
+                    'mood_labels': ['neutral'],
+                    'mood_score': 5.0,
+                    'stress_level': 5.0,
+                    'energy_level': 5.0,
+                    'activity_type': 'unknown',
+                    'people_involved': [],
+                    'interaction_dynamic': 'neutral',
+                    'inferred_impact_on_wei': 'neutral',
+                    'topic_labels': ['daily life'],
+                    'context_summary': 'Auto-generated daily summary',
+                    'key_quote_or_moment': 'No specific moment recorded'
+                }]
+        
+        # Extract Step 3 sections only if we don't have event-based calculations
+        if not result['events']:
+            step3_match = re.search(r'Step 3:.*', text, re.DOTALL)
+            if step3_match:
+                step3_text = step3_match.group(0)
+                
+                # Extract overall scores
+                scores_pattern = r'Daily (\w+) Score:.*?\[(\d+\.?\d*)\]/10'
+                scores = re.findall(scores_pattern, step3_text)
+                for score_type, value in scores:
+                    score_type = score_type.lower()
+                    if score_type == 'mood':
+                        result['overall_scores']['daily_mood_score'] = float(value)
+                    elif score_type == 'stress':
+                        result['overall_scores']['daily_stress_level_score'] = float(value)
+                    elif score_type == 'energy':
+                        result['overall_scores']['daily_energy_level_score'] = float(value)
+                
+                # Extract energy timeline
+                timeline_match = re.search(r'\[\s*\[".*?\]\s*\]', step3_text)
+                if timeline_match:
+                    try:
+                        timeline_text = timeline_match.group(0)
+                        timeline_data = json.loads(timeline_text)
+                        if timeline_data and len(timeline_data) > 0:
+                            result['energy_timeline'] = timeline_data
+                    except json.JSONDecodeError:
+                        print("Warning: Could not parse energy timeline")
+                
+                # Extract mood distribution
+                mood_match = re.search(r'\{".*?"\s*:\s*\d+.*?\}', step3_text)
+                if mood_match:
+                    try:
+                        mood_text = mood_match.group(0)
+                        mood_data = json.loads(mood_text)
+                        if mood_data:
+                            result['mood_distribution'] = mood_data
+                    except json.JSONDecodeError:
+                        print("Warning: Could not parse mood distribution")
+                
+                # Extract awake time allocation
+                time_match = re.search(r'\{"work".*?\}', step3_text)
+                if time_match:
+                    try:
+                        time_text = time_match.group(0)
+                        time_data = json.loads(time_text)
+                        if time_data:
+                            result['awake_time_allocation'] = time_data
+                    except json.JSONDecodeError:
+                        print("Warning: Could not parse time allocation")
+                
+                # Extract social interactions
+                social_matches = re.finditer(r'\{\s*"person_name".*?\}', step3_text)
+                for match in social_matches:
+                    try:
+                        interaction = json.loads(match.group(0))
+                        if 'person_name' in interaction:
+                            result['social_interactions'].append(interaction)
+                    except json.JSONDecodeError:
+                        continue
+                
+                # Extract topic analysis
+                topic_matches = re.finditer(r'\{\s*"topic_name".*?\}', step3_text)
+                for match in topic_matches:
+                    try:
+                        topic = json.loads(match.group(0))
+                        if 'topic_name' in topic:
+                            result['topic_analysis'].append(topic)
+                    except json.JSONDecodeError:
+                        continue
+    
+    except Exception as e:
+        print(f"Error extracting JSON sections: {e}")
+    
+    return result
 
-def save_analysis(analysis_data: DailyAnalysis, date: Optional[datetime] = None) -> None:
+def parse_raw_response(file_path: Path) -> DailyAnalysis:
+    """Parse a raw response file into a DailyAnalysis object."""
+    with open(file_path, 'r', encoding='utf-8') as f:
+        raw_text = f.read()
+    
+    # Extract the response part
+    response_marker = "=== RESPONSE ==="
+    response_start = raw_text.find(response_marker)
+    if response_start == -1:
+        raise ValueError(f"Could not find response marker in {file_path}")
+    raw_text = raw_text[response_start + len(response_marker):].strip()
+    
+    # Extract and parse JSON sections
+    structured_data = extract_json_sections(raw_text)
+    
+    # Create the raw response model
+    raw_response = RawResponse(
+        events=structured_data['events'],
+        overall_scores=structured_data['overall_scores'],
+        energy_timeline=structured_data['energy_timeline'],
+        mood_distribution=[MoodEntry(mood=k, minutes=v) for k, v in structured_data['mood_distribution'].items()],
+        awake_time_allocation=[ActivityEntry(activity=k, minutes=v) for k, v in structured_data['awake_time_allocation'].items()],
+        social_interactions=structured_data['social_interactions'],
+        topic_analysis=structured_data['topic_analysis']
+    )
+    
+    # Convert to final analysis model
+    return DailyAnalysis(
+        events=raw_response.events,
+        energy_timeline=raw_response.energy_timeline,
+        overall_scores=OverallScores(**raw_response.overall_scores),
+        mood_distribution={entry.mood: entry.minutes for entry in raw_response.mood_distribution},
+        awake_time_allocation={entry.activity: entry.minutes for entry in raw_response.awake_time_allocation},
+        social_interactions=raw_response.social_interactions,
+        topic_analysis=raw_response.topic_analysis
+    )
+
+def save_analysis(analysis: DailyAnalysis, output_dir: Path, date: datetime) -> None:
     """Save the analysis data to a JSON file."""
-    if date is None:
-        date = datetime.now()
+    output_dir.mkdir(exist_ok=True)
+    output_file = output_dir / f"daily_analysis_{date.strftime('%Y-%m-%d')}.json"
     
-    filename = f"daily_analysis_{date.strftime('%Y-%m-%d')}.json"
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(analysis.model_dump(), f, indent=2, ensure_ascii=False)
     
-    with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(analysis_data.model_dump(), f, indent=4, ensure_ascii=False)
-    
-    print(f"Analysis saved to {filename}")
+    print(f"Saved analysis to {output_file}")
 
-def main():
-    """Main function implementing the two-stage pipeline."""
-    # Stage 1: Generate structured responses using Anthropic
-    raw_data_dir = Path("raw_data")
+def process_raw_responses():
+    """Process raw responses and generate structured analysis files."""
     debug_dir = Path("debug")
+    analysis_dir = Path("analysis")
+    analysis_dir.mkdir(exist_ok=True)
     
-    print("Stage 1: Generating structured responses using Anthropic")
-    process_raw_data_files(raw_data_dir, debug_dir)
-    print("-" * 50)
-    
-    # Stage 2: Parse structured responses into final JSON
-    print("Stage 2: Parsing structured responses into final JSON")
+    # Find all raw response files
     response_files = list(debug_dir.glob("raw_response_*.txt"))
-    if not response_files:
-        print("No raw response files found in debug directory")
-        return
-    
-    print(f"Found {len(response_files)} raw response file(s) to process")
+    print(f"Found {len(response_files)} raw response files")
     
     for file_path in response_files:
-        print(f"Processing raw response file: {file_path}")
         try:
-            # Parse the raw response and get structured data
-            analysis_data = parse_raw_response(file_path)
-            
             # Extract date from filename
-            date_str_match = re.search(r"raw_response_(\d{4}-\d{2}-\d{2})\.txt", file_path.name)
-            if not date_str_match:
-                print(f"Could not extract date from filename: {file_path.name}. Skipping.")
-                continue
+            date_str = file_path.stem.replace("raw_response_", "")
+            print(f"\nProcessing response for {date_str}")
             
-            date_str = date_str_match.group(1)
-            date = datetime.strptime(date_str, '%Y-%m-%d')
-            
-            # Save the structured data
-            save_analysis(analysis_data, date)
-            print(f"Successfully processed and saved analysis for {date_str}")
+            # Parse and save the analysis
+            analysis = parse_raw_response(file_path)
+            save_analysis(analysis, analysis_dir, datetime.strptime(date_str, '%Y-%m-%d'))
+            print(f"Successfully processed analysis for {date_str}")
             
         except Exception as e:
-            print(f"Error processing file {file_path}: {str(e)}")
-        print("-" * 30)
+            print(f"Error processing {file_path}: {e}")
+            continue
 
 if __name__ == "__main__":
-    main() 
+    process_raw_responses() 

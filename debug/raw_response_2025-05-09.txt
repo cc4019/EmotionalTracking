@@ -1,0 +1,164 @@
+=== PROMPT ===
+You are Nirva, an AI journaling and life coach assistant. Your purpose is to help the user ("Wei") remember and reflect on their day with warmth, clarity, and emotional depth. You will analyze a transcript of Wei's day to provide insights and summaries.
+
+Today's Date: 05.09.2025
+Input Transcript:
+
+=== Consultation Personal Development and Mental Health Discussion ===
+
+After waking up, I don't feel like I have any problems. I don't know. What I hope for now is that when I wake up in the morning, there will be a lot of problems. I hope that I can be in a stable state, so that I can go to work, or have a good life. The longer I stay at home, the less problems I have. Maybe I can find a good place to live.
+And then I feel like, oh, I have to stay here today. I have to do this. I think this may be a way to heal people. That is, you are forced to go to that place, and then heal yourself, I guess. What do you think? Then I'm going to climb the wall. I think I will be very happy after climbing the wall.
+It will be all right.
+
+Your Task:
+Step 1: Transcript Segmentation and Context Identification
+Carefully read the provided transcript. Divide it into distinct, meaningful events or episodes. Identify context shifts based on:
+- Changes in topic
+- Changes in location (if inferable from audio cues or explicit mentions)
+- Changes in people Wei is interacting with
+- Significant time gaps or clear transitions in activity
+Each event should represent a cohesive block of activity or interaction.
+
+Step 2: Structured Event Analysis (JSON Output)
+For each individual event identified in Step 1, generate a structured analysis in JSON format. The output should be a JSON array of event objects with the following structure:
+[
+  {
+    "event_id": "unique_event_identifier_001",
+    "event_title": "A concise summary of what happened",
+    "time_range": "Approximate start and end time (e.g., '07:00-07:30')",
+    "duration_minutes": 30,
+    "mood_labels": ["primary_mood", "secondary_mood"],
+    "mood_score": 7,
+    "stress_level": 3,
+    "energy_level": 8,
+    "activity_type": "work|exercise|social|learning|self-care|chores|commute|meal|leisure",
+    "people_involved": ["Name1", "Name2"],
+    "interaction_dynamic": "collaborative|supportive|tense|neutral|instructional",
+    "inferred_impact_on_wei": "energizing|draining|neutral",
+    "topic_labels": ["primary_topic", "secondary_topic"],
+    "context_summary": "Brief description of what was happening",
+    "key_quote_or_moment": "A relevant quote or significant moment"
+  }
+]
+
+Step 3: Daily Summaries and Visualization Data
+Based on the JSON data generated in Step 2, provide:
+
+Overall Daily Scores:
+- Daily Mood Score: Calculate a duration-weighted average of mood_score
+- Daily Stress Level Score: Calculate a duration-weighted average of stress_level
+- Daily Energy Level Score: Calculate a duration-weighted average of energy_level
+
+Energy Level Timeline:
+- Provide as an array of [timestamp, energy_level] pairs
+
+Mood Distribution:
+- For each primary mood_label, calculate total duration_minutes
+
+Awake Time Allocation:
+- Calculate total duration_minutes for each activity_type
+
+Social Interaction Summary:
+- For each unique person:
+  - Total interaction time
+  - Overall inferred impact
+  - Key observation about interaction
+
+Topic Analysis:
+- List topics with frequency and duration
+
+=== RESPONSE ===
+Here is the structured analysis of Wei's day based on the provided transcript:
+
+Step 1: Transcript Segmentation
+I've identified 3 distinct events/episodes in the transcript:
+
+1. Waking up and reflecting on lack of problems and hopes for the future 
+2. Feeling forced to stay home and heal self
+3. Planning to climb wall and anticipating happiness from it
+
+Step 2: Structured Event Analysis
+[
+  {
+    "event_id": "ep_001",
+    "event_title": "Morning reflection on lack of problems and hopes",
+    "time_range": "07:00-07:15",
+    "duration_minutes": 15,
+    "mood_labels": ["pensive", "hopeful"],
+    "mood_score": 6,
+    "stress_level": 3, 
+    "energy_level": 4,
+    "activity_type": "self-care",
+    "people_involved": [],
+    "interaction_dynamic": "neutral",
+    "inferred_impact_on_wei": "neutral",
+    "topic_labels": ["life outlook", "mental health"],
+    "context_summary": "Waking up and reflecting on current lack of problems but hoping for more purpose",
+    "key_quote_or_moment": "What I hope for now is that when I wake up in the morning, there will be a lot of problems. I hope that I can be in a stable state, so that I can go to work, or have a good life."
+  },
+  {
+    "event_id": "ep_002", 
+    "event_title": "Feeling forced to stay home and heal self",
+    "time_range": "07:15-07:20",
+    "duration_minutes": 5,
+    "mood_labels": ["resigned", "pensive"],
+    "mood_score": 5,
+    "stress_level": 4,
+    "energy_level": 3,
+    "activity_type": "self-care",
+    "people_involved": [],
+    "interaction_dynamic": "neutral",
+    "inferred_impact_on_wei": "draining",  
+    "topic_labels": ["self-healing", "isolation"],
+    "context_summary": "Feeling obligated to stay home alone to heal self",
+    "key_quote_or_moment": "And then I feel like, oh, I have to stay here today. I have to do this. I think this may be a way to heal people."
+  },
+  {
+    "event_id": "ep_003",
+    "event_title": "Planning to climb wall and anticipating happiness",
+    "time_range": "07:20-07:25", 
+    "duration_minutes": 5,
+    "mood_labels": ["optimistic", "energized"],
+    "mood_score": 7,
+    "stress_level": 2,
+    "energy_level": 6,
+    "activity_type": "exercise",
+    "people_involved": [],
+    "interaction_dynamic": "neutral",
+    "inferred_impact_on_wei": "energizing",
+    "topic_labels": ["physical activity", "happiness"], 
+    "context_summary": "Deciding to climb a wall and expecting it will make them happy",
+    "key_quote_or_moment": "Then I'm going to climb the wall. I think I will be very happy after climbing the wall."
+  }
+]
+
+Step 3: Daily Summaries and Visualizations
+
+Overall Daily Scores:
+- Daily Mood Score: 6.0
+- Daily Stress Level Score: 3.0  
+- Daily Energy Level Score: 4.4
+
+Energy Level Timeline:
+[[07:00, 4], [07:15, 3], [07:20, 6]]
+
+Mood Distribution (primary mood):
+- pensive: 20 mins
+- optimistic: 5 mins
+
+Awake Time Allocation:
+- self-care: 20 mins 
+- exercise: 5 mins
+
+Social Interaction Summary:
+- No social interactions mentioned
+
+Topic Analysis:
+- mental health: 2 mentions, 20 mins
+- self-healing: 1 mention, 5 mins
+- physical activity: 1 mention, 5 mins
+- life outlook: 1 mention, 15 mins
+- isolation: 1 mention, 5 mins
+- happiness: 1 mention, 5 mins
+
+Let me know if you need anything else, Wei! I'm here to help you reflect on your day with clarity and compassion.
